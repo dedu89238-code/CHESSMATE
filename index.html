@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Provide silent mock WebSocket for Vite HMR client in sandboxed container environments
+      (function() {
+        if (typeof window === 'undefined') return;
+        var RealWebSocket = window.WebSocket;
+        if (!RealWebSocket) return;
+
+        function MockViteWebSocket(url, protocols) {
+          var urlStr = String(url || '');
+          var protoStr = String(protocols || '');
+          var isViteHmr = protoStr.indexOf('vite-') !== -1 ||
+                          urlStr.indexOf('token=') !== -1 ||
+                          urlStr.indexOf('vite') !== -1;
+          if (!isViteHmr) {
+            return new RealWebSocket(url, protocols);
+          }
+
+          var target = new EventTarget();
+          var mock = {
+            url: urlStr,
+            protocol: protoStr,
+            readyState: 0,
+            CONNECTING: 0,
+            OPEN: 1,
+            CLOSING: 2,
+            CLOSED: 3,
+            binaryType: 'blob',
+            bufferedAmount: 0,
+            extensions: '',
+            onopen: null,
+            onmessage: null,
+            onerror: null,
+            onclose: null,
+            addEventListener: function(type, listener, options) {
+              target.addEventListener(type, listener, options);
+            },
+            removeEventListener: function(type, listener, options) {
+              target.removeEventListener(type, listener, options);
+            },
+            dispatchEvent: function(event) {
+              return target.dispatchEvent(event);
+            },
+            send: function() {},
+            close: function() {
+              mock.readyState = 3;
+              var closeEvt = new Event('close');
+              if (mock.onclose) mock.onclose(closeEvt);
+              target.dispatchEvent(closeEvt);
+            }
+          };
+
+          setTimeout(function() {
+            mock.readyState = 1;
+            var openEvt = new Event('open');
+            if (mock.onopen) mock.onopen(openEvt);
+            target.dispatchEvent(openEvt);
+          }, 0);
+
+          return mock;
+        }
+
+        MockViteWebSocket.CONNECTING = 0;
+        MockViteWebSocket.OPEN = 1;
+        MockViteWebSocket.CLOSING = 2;
+        MockViteWebSocket.CLOSED = 3;
+        window.WebSocket = MockViteWebSocket;
+      })();
+
+      // Intercept and sanitize console and unhandled errors from Vite HMR / cross-origin iframe security
+      (function() {
+        function shouldSuppress(item) {
+          if (!item) return false;
+          var str = '';
+          if (typeof item === 'string') {
+            str = item;
+          } else if (typeof item === 'object') {
+            str = (item.message || '') + ' ' + (item.stack || '') + ' ' + (item.name || '') + ' ' + (item.reason || '') + ' ' + String(item);
+          } else {
+            str = String(item);
+          }
+          return /\[vite\]|failed to connect to websocket|WebSocket closed without opened|Blocked a frame with origin/i.test(str);
+        }
+
+        function filterArgs(args) {
+          for (var i = 0; i < args.length; i++) {
+            if (shouldSuppress(args[i])) return true;
+          }
+          return false;
+        }
+
+        function wrapConsole(con) {
+          if (!con) return con;
+          ['error', 'warn', 'info', 'debug', 'log'].forEach(function(fn) {
+            if (con[fn]) {
+              var orig = con[fn];
+              con[fn] = function() {
+                if (filterArgs(arguments)) return;
+                return orig.apply(this, arguments);
+              };
+            }
+          });
+          return con;
+        }
+
+        var _console = wrapConsole(window.console);
+        try {
+          Object.defineProperty(window, 'console', {
+            get: function() { return _console; },
+            set: function(val) { _console = wrapConsole(val); },
+            configurable: true,
+          });
+        } catch (e) {
+          window.console = _console;
+        }
+
+        var _onerror = null;
+        try {
+          Object.defineProperty(window, 'onerror', {
+            get: function() { return _onerror; },
+            set: function(fn) {
+              if (typeof fn === 'function') {
+                _onerror = function(msg, src, lineno, colno, err) {
+                  if (shouldSuppress(msg) || shouldSuppress(err) || shouldSuppress(src)) return true;
+                  return fn.apply(this, arguments);
+                };
+              } else {
+                _onerror = fn;
+              }
+            },
+            configurable: true,
+          });
+        } catch (e) {}
+
+        var _onrejection = null;
+        try {
+          Object.defineProperty(window, 'onunhandledrejection', {
+            get: function() { return _onrejection; },
+            set: function(fn) {
+              if (typeof fn === 'function') {
+                _onrejection = function(event) {
+                  if (event && (shouldSuppress(event.reason) || shouldSuppress(event))) {
+                    if (event.preventDefault) event.preventDefault();
+                    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+                    return true;
+                  }
+                  return fn.apply(this, arguments);
+                };
+              } else {
+                _onrejection = fn;
+              }
+            },
+            configurable: true,
+          });
+        } catch (e) {}
+
+        window.addEventListener('error', function(event) {
+          if (event && (shouldSuppress(event.message) || shouldSuppress(event.error) || shouldSuppress(event.filename))) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && (shouldSuppress(event.reason) || shouldSuppress(event))) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+      })();
+      // If a browser service worker erroneously served index.html on .well-known, unregister and display real JSON
+      if (window.location.pathname.indexOf('/.well-known/') !== -1) {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            for (var i = 0; i < regs.length; i++) {
+              regs[i].unregister();
+            }
+          });
+        }
+        fetch(window.location.href, { cache: 'no-store' })
+          .then(function(res) { return res.text(); })
+          .then(function(text) {
+            document.open();
+            document.write('<pre style="word-wrap:break-word;white-space:pre-wrap;font-family:monospace;">' + text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>');
+            document.close();
+          })
+          .catch(function() {
+            window.location.reload();
+          });
+      }
+    </script>
+    <title>CHESSMATE</title>
+    <meta name="description" content="A premium interactive chess game featuring AI opponents, 2-player local gameplay, statistics, animations, timers, board themes, and the CHESSMATE AI companion." />
+    <meta name="theme-color" content="#0c0a09" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CHESSMATE" />
+    <meta name="application-name" content="CHESSMATE" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <meta property="og:title" content="CHESSMATE" />
+    <meta property="og:description" content="A premium interactive chess game featuring AI opponents, 2-player local gameplay, statistics, animations, timers, board themes, and the CHESSMATE AI companion." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

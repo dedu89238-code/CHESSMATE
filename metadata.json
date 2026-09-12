@@ -1,0 +1,6 @@
+{
+  "name": "CHESSMATE",
+  "description": "A premium interactive chess game featuring AI opponents, 2-player local gameplay, statistics, animations, timers, board themes, and the CHESSMATE AI companion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

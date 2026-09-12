@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@keyframes royal-pulse-king {
+  0%, 100% {
+    opacity: 0.65;
+    transform: scale(0.96) translateZ(0);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.04) translateZ(0);
+  }
+}
+
+@keyframes royal-pulse-queen {
+  0%, 100% {
+    opacity: 0.70;
+    transform: scale(0.95) translateZ(0);
+  }
+  50% {
+    opacity: 1.0;
+    transform: scale(1.05) translateZ(0);
+  }
+}
+
+@keyframes royal-crown-king {
+  0%, 100% {
+    opacity: 0.50;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translateZ(0);
+  }
+}
+
+@keyframes royal-crown-queen {
+  0%, 100% {
+    opacity: 0.50;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translateZ(0);
+  }
+}
+
+.royal-aura-king {
+  animation: royal-pulse-king 3.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.royal-aura-queen {
+  animation: royal-pulse-queen 3.0s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.royal-crown-king {
+  animation: royal-crown-king 2.8s ease-in-out infinite 0.4s;
+  will-change: opacity;
+}
+
+.royal-crown-queen {
+  animation: royal-crown-queen 2.5s ease-in-out infinite 0.4s;
+  will-change: opacity;
+}
